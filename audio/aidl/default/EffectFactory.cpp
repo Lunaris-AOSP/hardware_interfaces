@@ -299,28 +299,46 @@ void Factory::getDlSyms_l(DlEntry& entry) {
 }
 
 void Factory::loadHardcodedEffects() {
-    static const char* kAxionFxLibPaths[] = {
-        "/vendor/lib64/soundfx/libaxionfxaidl.so",
-        "/vendor/lib/soundfx/libaxionfxaidl.so"
+    struct HardcodedEffect {
+        const char* name;
+        const char* paths[2];
+        const AudioUuid& (*typeUuid)();
+        const AudioUuid& (*implUuid)();
     };
 
-    for (const char* libPath : kAxionFxLibPaths) {
-        if (access(libPath, R_OK) != 0) {
-            continue;
-        }
+    static const HardcodedEffect kHardcodedEffects[] = {
+        {"AxionFx",
+         {"/vendor/lib64/soundfx/libaxionfxaidl.so", "/vendor/lib/soundfx/libaxionfxaidl.so"},
+         getEffectTypeUuidAxionFx, getEffectImplUuidAxionFx},
+        {"DolbyDap",
+         {"/vendor/lib64/soundfx/libswdapaidl.so", "/vendor/lib/soundfx/libswdapaidl.so"},
+         getEffectTypeUuidDolbyDap, getEffectImplUuidDolbyDap},
+    };
 
-        Descriptor::Identity id;
-        id.type = getEffectTypeUuidAxionFx();
-        id.uuid = getEffectImplUuidAxionFx();
-        id.proxy = std::nullopt;
+    for (const auto& effect : kHardcodedEffects) {
+        bool found = false;
+        for (const char* libPath : effect.paths) {
+            if (access(libPath, R_OK) != 0) {
+                continue;
+            }
 
-        LOG(INFO) << __func__ << " loading hardcoded AxionFx effect from " << libPath;
-        if (openEffectLibrary(id.uuid, libPath)) {
-            mIdentitySet.insert(std::move(id));
+            Descriptor::Identity id;
+            id.type = effect.typeUuid();
+            id.uuid = effect.implUuid();
+            id.proxy = std::nullopt;
+
+            LOG(INFO) << __func__ << " loading hardcoded " << effect.name << " effect from "
+                      << libPath;
+            if (openEffectLibrary(id.uuid, libPath)) {
+                mIdentitySet.insert(std::move(id));
+            }
+            found = true;
+            break;
         }
-        return;
+        if (!found) {
+            LOG(DEBUG) << __func__ << " " << effect.name << " library not found, skipping";
+        }
     }
-    LOG(DEBUG) << __func__ << " AxionFx library not found, skipping";
 }
 
 }  // namespace aidl::android::hardware::audio::effect
